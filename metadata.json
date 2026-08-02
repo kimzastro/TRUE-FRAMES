@@ -1,0 +1,6 @@
+{
+  "name": "Engineering Notes Portal",
+  "description": "A centralized digital portal for storing, searching, and downloading engineering subjects' PYQs, Notes, and Short Notes by semester and tags.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

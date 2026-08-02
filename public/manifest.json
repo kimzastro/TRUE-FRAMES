@@ -1,0 +1,17 @@
+{
+  "short_name": "EngiNotes",
+  "name": "ENGINOTES Engineering Notes Portal",
+  "icons": [
+    {
+      "src": "/src/assets/images/enginotes_app_icon_1783437337742.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#09090b",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait"
+}
