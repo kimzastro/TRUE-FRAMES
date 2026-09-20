@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Search, FolderGit2, ShieldAlert, Sparkles, AlertTriangle, KeyRound, Download, X, Smartphone, Chrome, Share2, Monitor, ArrowUpFromLine, RefreshCw } from "lucide-react";
+import { Search, FolderGit2, ShieldAlert, Sparkles, AlertTriangle, KeyRound, Download, X, Smartphone, Chrome, Share2, Monitor, ArrowUpFromLine, RefreshCw, Star, Eye, ExternalLink } from "lucide-react";
 import { Subject, Material, ViewState, ThemeMode } from "./types";
-import { formatBytes, formatDate } from "./utils";
+import { formatBytes, formatDate, parseDriveLink } from "./utils";
 import Header from "./components/Header";
 import Breadcrumb from "./components/Breadcrumb";
 import SubjectGrid from "./components/SubjectGrid";
@@ -10,6 +10,8 @@ import CategoryGrid from "./components/CategoryGrid";
 import MaterialList from "./components/MaterialList";
 import AdminPanel from "./components/AdminPanel";
 import IntroAnimation from "./components/IntroAnimation";
+import DocumentPreviewModal from "./components/DocumentPreviewModal";
+import StarredNotesView from "./components/StarredNotesView";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
@@ -86,6 +88,37 @@ export default function App() {
 
   // Global search (home view)
   const [globalSearch, setGlobalSearch] = useState("");
+
+  // Starred / Bookmarks state
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("enginotes_bookmarked_ids");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Keep bookmarks in localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("enginotes_bookmarked_ids", JSON.stringify(bookmarkedIds));
+    } catch (e) {
+      console.warn("Could not save bookmarked notes:", e);
+    }
+  }, [bookmarkedIds]);
+
+  const handleToggleBookmark = (id: string) => {
+    setBookmarkedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Starred Notes View Modal/Page State
+  const [isStarredView, setIsStarredView] = useState(false);
+
+  // In-App Document Previewer State
+  const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null);
 
   // Load admin token & initial academic data
   useEffect(() => {
@@ -250,9 +283,12 @@ export default function App() {
     }
   };
 
-  // Admin delete subject
+  // Admin delete subject (Cleans up subjects, orphaned materials, and bookmarks)
   const handleDeleteSubject = async (id: string): Promise<boolean> => {
     try {
+      // Collect IDs of materials belonging to this subject
+      const deletedMatIds = materials.filter((m) => m.subjectId === id).map((m) => m.id);
+
       fetch(`/api/subjects/${id}`, {
         method: "DELETE",
         headers: {
@@ -260,14 +296,29 @@ export default function App() {
         },
       }).catch((e) => console.warn(e));
 
-      // Remove from local storage
+      // Remove subject from local storage
       const localSubsRaw = localStorage.getItem("enginotes_custom_subjects");
       if (localSubsRaw) {
         const localSubs: Subject[] = JSON.parse(localSubsRaw);
         localStorage.setItem("enginotes_custom_subjects", JSON.stringify(localSubs.filter((s) => s.id !== id)));
       }
 
+      // CRITICAL FIX: Clean up orphaned materials belonging to this subject from local storage
+      const localMatsRaw = localStorage.getItem("enginotes_custom_materials");
+      if (localMatsRaw) {
+        const localMats: Material[] = JSON.parse(localMatsRaw);
+        localStorage.setItem("enginotes_custom_materials", JSON.stringify(localMats.filter((m) => m.subjectId !== id)));
+      }
+
+      // Clean up bookmarks for deleted materials
+      setBookmarkedIds((prev) => prev.filter((bId) => !deletedMatIds.includes(bId)));
+
+      // Update state immediately
+      setSubjects((prev) => prev.filter((s) => s.id !== id));
+      setMaterials((prev) => prev.filter((m) => m.subjectId !== id));
+
       await fetchData(); // refresh DB state
+
       // If we are currently looking at this subject, go back home
       setViewState((current) => {
         if (current.type !== "home" && current.subjectId === id) {
@@ -362,6 +413,12 @@ export default function App() {
         localStorage.setItem("enginotes_custom_materials", JSON.stringify(localMats.filter((m) => m.id !== id)));
       }
 
+      // Clean up bookmark if this material was starred
+      setBookmarkedIds((prev) => prev.filter((bId) => bId !== id));
+
+      // Update state immediately
+      setMaterials((prev) => prev.filter((m) => m.id !== id));
+
       await fetchData(); // Refresh materials list
       return true;
     } catch (err) {
@@ -401,20 +458,23 @@ export default function App() {
         onLogout={handleLogout}
         themeMode={themeMode}
         onThemeChange={setThemeMode}
+        starredCount={bookmarkedIds.length}
+        isStarredView={isStarredView}
+        onToggleStarredView={() => setIsStarredView((prev) => !prev)}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Error/Offline state handler */}
         {error && (
-          <div className="bg-red-50 border border-red-150 text-red-900 px-6 py-4 rounded-2xl mb-6 flex items-start space-x-3.5 shadow-2xs">
+          <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-red-900 dark:text-red-200 px-6 py-4 rounded-2xl mb-6 flex items-start space-x-3.5 shadow-2xs">
             <AlertTriangle className="w-6 h-6 shrink-0 text-red-500" />
             <div>
               <p className="font-bold">Sync Error</p>
               <p className="text-sm mt-0.5">{error}</p>
               <button
                 onClick={fetchData}
-                className="mt-3 text-xs bg-white hover:bg-zinc-50 border border-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg transition-all"
+                className="mt-3 text-xs bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 font-semibold px-3 py-1.5 rounded-lg transition-all"
               >
                 Retry Database Connection
               </button>
@@ -441,11 +501,24 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* Loading placeholder */}
-        {loading ? (
+        {/* Starred / Bookmarked View */}
+        {isStarredView ? (
+          <StarredNotesView
+            materials={materials}
+            subjects={subjects}
+            bookmarkedIds={bookmarkedIds}
+            onToggleBookmark={handleToggleBookmark}
+            onPreview={(mat) => setPreviewMaterial(mat)}
+            onClose={() => setIsStarredView(false)}
+            onNavigate={(targetView) => {
+              setIsStarredView(false);
+              setViewState(targetView);
+            }}
+          />
+        ) : loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-            <p className="text-zinc-500 font-mono text-xs mt-4">Syncing file index from academic database...</p>
+            <div className="w-10 h-10 border-4 border-indigo-100 dark:border-indigo-950 border-t-indigo-600 rounded-full animate-spin"></div>
+            <p className="text-zinc-500 dark:text-zinc-400 font-mono text-xs mt-4">Syncing file index from academic database...</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -453,7 +526,10 @@ export default function App() {
             <Breadcrumb
               viewState={viewState}
               subjects={subjects}
-              onNavigate={setViewState}
+              onNavigate={(view) => {
+                setIsStarredView(false);
+                setViewState(view);
+              }}
             />
 
             {/* Render proper view in the hierarchic tree */}
@@ -469,7 +545,7 @@ export default function App() {
                 {viewState.type === "home" && (
                   <div className="space-y-8">
                     {/* Global Document Search Bar */}
-                    <div id="global-search-container" className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
+                    <div id="global-search-container" className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
                       <label htmlFor="global-search-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                         Global Vault Search (Across all subject files)
                       </label>
@@ -514,37 +590,56 @@ export default function App() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                               {globalFilteredMaterials.map((mat) => {
                                 const sub = subjects.find((s) => s.id === mat.subjectId);
+                                const isBookmarked = bookmarkedIds.includes(mat.id);
+                                const linkInfo = parseDriveLink(mat.driveLink);
+
                                 return (
                                   <div
                                     key={mat.id}
-                                    className="border border-zinc-150 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-indigo-800 bg-white dark:bg-zinc-900 p-3.5 rounded-xl flex flex-col justify-between hover:shadow-2xs transition-all group"
+                                    className="border border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-700 bg-white dark:bg-zinc-900 p-3.5 rounded-xl flex flex-col justify-between hover:shadow-2xs transition-all group"
                                   >
                                     <div>
                                       <div className="flex justify-between items-start gap-1 mb-1">
-                                        <span className="text-[9px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 px-1 py-0.2 rounded uppercase">
+                                        <span className="text-[9px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 px-1 py-0.5 rounded uppercase">
                                           {sub ? sub.name : mat.subjectId.toUpperCase()} • Sem {mat.semester}
                                         </span>
-                                        <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 shrink-0">
-                                          {formatBytes(mat.fileSize)}
-                                        </span>
+                                        <button
+                                          id={`btn-global-star-${mat.id}`}
+                                          onClick={() => handleToggleBookmark(mat.id)}
+                                          title={isBookmarked ? "Starred" : "Star"}
+                                          className="text-zinc-400 hover:text-amber-500 transition-colors p-0.5"
+                                        >
+                                          <Star className={`w-3.5 h-3.5 ${isBookmarked ? "fill-amber-400 text-amber-500" : ""}`} />
+                                        </button>
                                       </div>
-                                      <h4 className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-900 dark:group-hover:text-indigo-300 text-xs md:text-sm line-clamp-1 transition-colors">
+                                      <h4 className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 text-xs md:text-sm line-clamp-1 transition-colors">
                                         {mat.title}
                                       </h4>
                                     </div>
 
-                                    <div className="mt-3 pt-2.5 border-t border-zinc-50 dark:border-zinc-800/80 flex justify-between items-center text-[10px] font-mono">
-                                      <span className="text-zinc-400 dark:text-zinc-400 capitalize bg-indigo-50/50 dark:bg-indigo-950/50 px-1.5 py-0.5 border border-indigo-100/50 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-sm">
+                                    <div className="mt-3 pt-2.5 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[10px] font-mono">
+                                      <span className="text-zinc-500 dark:text-zinc-400 capitalize bg-indigo-50/50 dark:bg-indigo-950/50 px-1.5 py-0.5 border border-indigo-100/50 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-sm">
                                         {mat.category === "short_notes" ? "Short Notes" : mat.category.toUpperCase()}
                                       </span>
-                                      <button
-                                        id={`btn-global-dl-${mat.id}`}
-                                        onClick={() => handleDownloadMaterial(mat.id)}
-                                        className="inline-flex items-center space-x-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-bold cursor-pointer"
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                        <span>Download</span>
-                                      </button>
+                                      <div className="flex items-center space-x-2">
+                                        <button
+                                          id={`btn-global-preview-${mat.id}`}
+                                          onClick={() => setPreviewMaterial(mat)}
+                                          className="inline-flex items-center space-x-1 text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>Preview</span>
+                                        </button>
+                                        <a
+                                          href={linkInfo.viewUrl || mat.driveLink}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center space-x-1 text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                          <span>Drive</span>
+                                        </a>
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -555,12 +650,14 @@ export default function App() {
                       )}
                     </div>
 
-
                     {/* Subjects Catalog */}
                     <SubjectGrid
                       subjects={subjects}
                       materials={materials}
-                      onNavigate={setViewState}
+                      onNavigate={(view) => {
+                        setIsStarredView(false);
+                        setViewState(view);
+                      }}
                       isAdmin={isAdmin}
                       onDeleteSubject={handleDeleteSubject}
                     />
@@ -572,8 +669,14 @@ export default function App() {
                   <SemesterGrid
                     subject={activeSubject}
                     materials={materials}
-                    onNavigate={setViewState}
+                    onNavigate={(view) => {
+                      setIsStarredView(false);
+                      setViewState(view);
+                    }}
                     onDownload={handleDownloadMaterial}
+                    bookmarkedIds={bookmarkedIds}
+                    onToggleBookmark={handleToggleBookmark}
+                    onPreview={(mat) => setPreviewMaterial(mat)}
                   />
                 )}
 
@@ -583,7 +686,10 @@ export default function App() {
                     subject={activeSubject}
                     semester={viewState.semester}
                     materials={materials}
-                    onNavigate={setViewState}
+                    onNavigate={(view) => {
+                      setIsStarredView(false);
+                      setViewState(view);
+                    }}
                   />
                 )}
 
@@ -594,10 +700,16 @@ export default function App() {
                     semester={viewState.semester}
                     category={viewState.category}
                     materials={materials}
-                    onNavigate={setViewState}
+                    onNavigate={(view) => {
+                      setIsStarredView(false);
+                      setViewState(view);
+                    }}
                     onDownload={handleDownloadMaterial}
                     isAdmin={isAdmin}
                     onDeleteMaterial={handleDeleteMaterial}
+                    bookmarkedIds={bookmarkedIds}
+                    onToggleBookmark={handleToggleBookmark}
+                    onPreview={(mat) => setPreviewMaterial(mat)}
                   />
                 )}
               </motion.div>
@@ -605,17 +717,6 @@ export default function App() {
           </div>
         )}
       </main>
-
-      {/* Website Footer */}
-      <footer className="border-t border-zinc-200 bg-white py-8 mt-12 text-center text-xs text-zinc-500 font-mono">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center space-x-2">
-            <FolderGit2 className="w-4 h-4 text-indigo-600" />
-            <span className="font-bold text-zinc-800 font-display">ENGINOTES ACADEMIC PORTAL</span>
-          </div>
-          <p>© {new Date().getFullYear()} EngiNotes. All Rights Reserved. Designed for Engineering Students.</p>
-        </div>
-      </footer>
 
       {/* Admin Passcode Entry Modal */}
       <AnimatePresence>
@@ -625,21 +726,21 @@ export default function App() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl border border-zinc-200 shadow-2xl p-6 max-w-sm w-full"
+              className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 max-w-sm w-full"
             >
               <div className="text-center">
-                <div className="mx-auto w-12 h-12 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-4">
+                <div className="mx-auto w-12 h-12 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mb-4">
                   <KeyRound className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold font-display text-zinc-900">Admin Authentication</h3>
-                <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto">
+                <h3 className="text-lg font-bold font-display text-zinc-900 dark:text-zinc-100">Admin Authentication</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xs mx-auto">
                   Only the site administrator can access file upload controls and database managers.
                 </p>
               </div>
 
               <form onSubmit={handleLoginSubmit} className="mt-6 space-y-4">
                 <div>
-                  <label htmlFor="admin-passcode-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5 text-center">
+                  <label htmlFor="admin-passcode-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5 text-center">
                     Enter Administrative Passcode
                   </label>
                   <input
@@ -651,12 +752,12 @@ export default function App() {
                     placeholder="••••"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value.replace(/\D/g, ""))}
-                    className="w-32 mx-auto text-center block text-2xl tracking-widest font-mono bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100 rounded-xl py-2 outline-none transition-all"
+                    className="w-32 mx-auto text-center block text-2xl tracking-widest font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950 rounded-xl py-2 outline-none transition-all"
                   />
                 </div>
 
                 {loginError && (
-                  <p className="text-xs text-red-600 text-center font-semibold font-mono bg-red-50 border border-red-100 py-1.5 px-3 rounded-lg">
+                  <p className="text-xs text-red-600 dark:text-red-400 text-center font-semibold font-mono bg-red-50 dark:bg-red-950/50 border border-red-100 dark:border-red-900 py-1.5 px-3 rounded-lg">
                     {loginError}
                   </p>
                 )}
@@ -666,7 +767,7 @@ export default function App() {
                     id="btn-cancel-login"
                     type="button"
                     onClick={() => setIsLoginModalOpen(false)}
-                    className="flex-1 px-4 py-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 font-semibold text-sm rounded-xl transition-colors cursor-pointer"
+                    className="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-sm rounded-xl transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -684,21 +785,37 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-zinc-150 py-8 mt-12 text-center text-xs text-zinc-400 font-mono">
+      {/* Document In-App Preview Modal */}
+      {previewMaterial && (
+        <DocumentPreviewModal
+          material={previewMaterial}
+          subject={subjects.find((s) => s.id === previewMaterial.subjectId)}
+          isBookmarked={bookmarkedIds.includes(previewMaterial.id)}
+          onToggleBookmark={handleToggleBookmark}
+          onClose={() => setPreviewMaterial(null)}
+        />
+      )}
+
+      {/* Website Footer */}
+      <footer className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 py-8 mt-12 text-center text-xs text-zinc-500 dark:text-zinc-400 font-mono transition-colors">
         <div className="max-w-7xl mx-auto px-4 space-y-3">
-          <p>© 2026 ENGINOTES Portal. Open access academic resource hub.</p>
-          <div className="flex items-center justify-center space-x-2">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center space-x-2">
+              <FolderGit2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="font-bold text-zinc-900 dark:text-zinc-100 font-display">ENGINOTES ACADEMIC VAULT</span>
+            </div>
+            <p>© {new Date().getFullYear()} EngiNotes. Built for Engineering Students.</p>
+          </div>
+          <div className="flex items-center justify-center space-x-2 pt-2">
             <button
               id="btn-replay-intro"
               onClick={() => setShowIntro(true)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 rounded-full text-[11px] font-sans font-semibold transition-all cursor-pointer shadow-2xs hover:text-indigo-600 hover:border-indigo-200"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-full text-[11px] font-sans font-semibold transition-all cursor-pointer shadow-2xs hover:text-indigo-600 dark:hover:text-indigo-400"
             >
               <RefreshCw className="w-3 h-3 text-indigo-500" />
               <span>Replay Intro Animation</span>
             </button>
           </div>
-          <p className="text-[10px] text-zinc-300">Compiled & served with containerised Vite + Express technology</p>
         </div>
       </footer>
     </div>

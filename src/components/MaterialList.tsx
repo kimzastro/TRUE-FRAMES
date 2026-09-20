@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { FileText, ArrowLeft, ExternalLink, Trash2, Calendar, CheckCircle } from "lucide-react";
+import { FileText, ArrowLeft, ExternalLink, Trash2, Calendar, Star, Eye } from "lucide-react";
 import { Subject, Material, ViewState } from "../types";
-import { formatDate } from "../utils";
+import { formatDate, parseDriveLink } from "../utils";
 import { motion } from "motion/react";
 
 interface MaterialListProps {
@@ -13,6 +13,9 @@ interface MaterialListProps {
   onDownload: (id: string) => void;
   isAdmin: boolean;
   onDeleteMaterial: (id: string) => void;
+  bookmarkedIds?: string[];
+  onToggleBookmark?: (id: string) => void;
+  onPreview?: (mat: Material) => void;
 }
 
 export default function MaterialList({
@@ -24,6 +27,9 @@ export default function MaterialList({
   onDownload,
   isAdmin,
   onDeleteMaterial,
+  bookmarkedIds = [],
+  onToggleBookmark,
+  onPreview,
 }: MaterialListProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -74,7 +80,9 @@ export default function MaterialList({
             </span>
           </div>
           <h2 className="text-2xl font-bold text-zinc-950 dark:text-zinc-50 font-display mt-1">{getCategoryLabel(category)}</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Click download to save files directly to your device for offline study.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Preview directly in app or open in Google Drive to study and download.
+          </p>
         </div>
 
         <button
@@ -94,118 +102,151 @@ export default function MaterialList({
           <p className="text-zinc-600 dark:text-zinc-300 font-medium text-base">No files uploaded yet in this catalog.</p>
           <p className="text-zinc-400 dark:text-zinc-500 text-sm mt-1 max-w-md mx-auto">
             {isAdmin
-              ? "Use the upload form in the Admin dashboard to add PDFs for this semester."
+              ? "Use the upload form in the Admin dashboard to add PDFs or Drive links for this semester."
               : "No resources are currently published for this category. Double-click ENGINOTES to login as admin and add materials."}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredMaterials.map((mat, index) => (
-            <motion.div
-              key={mat.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, delay: index * 0.04 }}
-              className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-indigo-700 rounded-xl p-5 flex flex-col justify-between hover:shadow-xs transition-all group relative"
-            >
-              <div>
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="p-2 bg-indigo-50/70 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      <ExternalLink className="w-5 h-5" />
+          {filteredMaterials.map((mat, index) => {
+            const isBookmarked = bookmarkedIds.includes(mat.id);
+            const linkInfo = parseDriveLink(mat.driveLink);
+
+            return (
+              <motion.div
+                key={mat.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.04 }}
+                className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-xl p-5 flex flex-col justify-between hover:shadow-xs transition-all group relative"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2 bg-indigo-50/70 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 block uppercase">RESOURCE</span>
+                        <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {linkInfo.isGoogleDrive ? "Google Drive" : "Resource Link"}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 block uppercase">RESOURCE LINK</span>
-                      <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                        Google Drive
-                      </span>
+
+                    <div className="flex items-center space-x-1">
+                      {/* Star / Bookmark button */}
+                      {onToggleBookmark && (
+                        <button
+                          id={`btn-star-mat-${mat.id}`}
+                          type="button"
+                          onClick={() => onToggleBookmark(mat.id)}
+                          title={isBookmarked ? "Remove from Starred Notes" : "Add to Starred Notes"}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                            isBookmarked
+                              ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-500"
+                              : "border-transparent text-zinc-400 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          <Star className={`w-4 h-4 ${isBookmarked ? "fill-amber-400" : ""}`} />
+                        </button>
+                      )}
+
+                      {isAdmin && (
+                        <div>
+                          {confirmDeleteId === mat.id ? (
+                            <div className="flex items-center space-x-1 bg-red-50 dark:bg-red-950 border border-red-150 dark:border-red-900 px-2 py-1 rounded-lg">
+                              <span className="text-[10px] font-bold text-red-700 dark:text-red-300 mr-1">Delete?</span>
+                              <button
+                                id={`btn-confirm-delete-mat-${mat.id}`}
+                                onClick={() => {
+                                  onDeleteMaterial(mat.id);
+                                  setConfirmDeleteId(null);
+                                }}
+                                className="text-[9px] font-bold bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded cursor-pointer"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                id={`btn-cancel-delete-mat-${mat.id}`}
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-[9px] font-bold bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-1.5 py-0.5 rounded cursor-pointer"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              id={`btn-delete-mat-${mat.id}`}
+                              onClick={() => setConfirmDeleteId(mat.id)}
+                              className="p-1.5 text-zinc-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg border border-transparent hover:border-red-100 dark:hover:border-red-900 transition-all cursor-pointer"
+                              title="Delete File"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {isAdmin && (
-                    <div className="flex items-center space-x-1">
-                      {confirmDeleteId === mat.id ? (
-                        <div className="flex items-center space-x-1 bg-red-50 dark:bg-red-950 border border-red-150 dark:border-red-900 px-2 py-1 rounded-lg">
-                          <span className="text-[10px] font-bold text-red-700 dark:text-red-300 mr-1">Delete?</span>
-                          <button
-                            id={`btn-confirm-delete-mat-${mat.id}`}
-                            onClick={() => {
-                              onDeleteMaterial(mat.id);
-                              setConfirmDeleteId(null);
-                            }}
-                            className="text-[9px] font-bold bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded cursor-pointer"
-                          >
-                            Yes
-                          </button>
-                          <button
-                            id={`btn-cancel-delete-mat-${mat.id}`}
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="text-[9px] font-bold bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-1.5 py-0.5 rounded cursor-pointer"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          id={`btn-delete-mat-${mat.id}`}
-                          onClick={() => setConfirmDeleteId(mat.id)}
-                          className="p-1.5 text-zinc-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg border border-transparent hover:border-red-100 dark:hover:border-red-900 transition-all cursor-pointer"
-                          title="Delete File"
+                  <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 leading-snug group-hover:text-indigo-900 dark:group-hover:text-indigo-300 transition-colors">
+                    {mat.title}
+                  </h3>
+
+                  {/* Badges/Tags */}
+                  {mat.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {mat.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/50 border border-indigo-100/50 dark:border-indigo-900/50 rounded"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 leading-snug group-hover:text-indigo-900 dark:group-hover:text-indigo-300 transition-colors">
-                  {mat.title}
-                </h3>
-
-                {/* Badges/Tags */}
-                {mat.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {mat.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/50 border border-indigo-100/50 dark:border-indigo-900/50 rounded"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
+                {/* Bottom detail action row */}
+                <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                  <div className="flex items-center text-[10px] text-zinc-400 dark:text-zinc-500 font-mono space-x-2">
+                    <span className="flex items-center">
+                      <Calendar className="w-3.5 h-3.5 mr-1 text-zinc-300 dark:text-zinc-600" />
+                      {formatDate(mat.uploadDate)}
+                    </span>
                   </div>
-                )}
-              </div>
 
-              {/* Bottom detail action row */}
-              <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                <div className="flex items-center text-[10px] text-zinc-400 dark:text-zinc-500 font-mono space-x-3">
-                  <span className="flex items-center">
-                    <Calendar className="w-3.5 h-3.5 mr-1 text-zinc-300 dark:text-zinc-600" />
-                    {formatDate(mat.uploadDate)}
-                  </span>
-                  <span className="flex items-center text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/50 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/50">
-                    <ExternalLink className="w-3 h-3 mr-1" />
-                    Google Drive
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    {onPreview && (
+                      <button
+                        id={`btn-preview-${mat.id}`}
+                        onClick={() => onPreview(mat)}
+                        className="inline-flex items-center space-x-1 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white border border-indigo-100 dark:border-indigo-900 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-2xs"
+                        title="Read and Preview within App"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview</span>
+                      </button>
+                    )}
+
+                    <button
+                      id={`btn-download-${mat.id}`}
+                      onClick={() => window.open(linkInfo.viewUrl || mat.driveLink, "_blank", "noopener,noreferrer")}
+                      className="inline-flex items-center space-x-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer border border-zinc-200 dark:border-zinc-700"
+                      title="Open in Google Drive"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Drive</span>
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  id={`btn-download-${mat.id}`}
-                  onClick={() => window.open(mat.driveLink, "_blank", "noopener,noreferrer")}
-                  className="inline-flex items-center space-x-1 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white border border-indigo-100 dark:border-indigo-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-2xs"
-                  title="Open Link in New Tab"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Link</span>
-                </button>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>
   );
-
 }

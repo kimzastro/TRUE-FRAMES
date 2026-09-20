@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { FolderGit2, Link as LinkIcon, FileText, Plus, ListFilter, Trash2, KeyRound, AlertCircle, Sparkles, X, Users, Download, FileSpreadsheet, ExternalLink, CheckCircle2 } from "lucide-react";
 import { Subject, Material } from "../types";
 import { SUBJECT_AVATAR_PRESETS, getSubjectAvatar } from "../lib/subjectAvatars";
+import { parseDriveLink } from "../utils";
 
 interface AdminPanelProps {
   subjects: Subject[];
@@ -178,19 +179,26 @@ export default function AdminPanel({
     setMatLoading(true);
     setMatMessage(null);
 
+    // Normalize Google Drive link (converting /edit, etc. to clean /view link)
+    const linkInfo = parseDriveLink(matDriveLink.trim());
+    const normalizedDriveLink = linkInfo.viewUrl || matDriveLink.trim();
+
     const success = await onAddMaterial({
       title: matTitle.trim(),
       subjectId: matSubjectId,
       semester: matSemester,
       category: matCategory,
       tags: matTags,
-      driveLink: matDriveLink.trim(),
+      driveLink: normalizedDriveLink,
     });
 
     setMatLoading(false);
 
     if (success) {
-      setMatMessage({ type: "success", text: `"${matTitle}" published successfully with Google Drive link!` });
+      setMatMessage({
+        type: "success",
+        text: `"${matTitle}" published successfully with normalized ${linkInfo.isGoogleDrive ? "Google Drive" : "Resource"} link!`,
+      });
       // Reset form
       setMatTitle("");
       setMatTags("");
@@ -316,8 +324,8 @@ export default function AdminPanel({
             )}
 
             {subjects.length === 0 ? (
-              <div className="bg-amber-50 border border-amber-100 text-amber-800 p-4 rounded-xl text-sm flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 shrink-0" />
+              <div className="bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-4 rounded-xl text-sm flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 shrink-0 text-amber-600" />
                 <div>
                   <p className="font-bold">No Subject Folders Available!</p>
                   <p className="mt-0.5">You must create at least one subject folder in the "Manage Subjects" tab before uploading materials.</p>
@@ -328,7 +336,7 @@ export default function AdminPanel({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {/* File Title */}
                   <div className="col-span-1 md:col-span-2">
-                    <label htmlFor="mat-title-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    <label htmlFor="mat-title-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                       Resource Title *
                     </label>
                     <input
@@ -338,13 +346,13 @@ export default function AdminPanel({
                       placeholder="e.g., Object Oriented Programming Notes - Prof. Sen"
                       value={matTitle}
                       onChange={(e) => setMatTitle(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-zinc-400"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
                     />
                   </div>
 
                   {/* Subject Target */}
                   <div>
-                    <label htmlFor="mat-subject-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    <label htmlFor="mat-subject-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                       Subject Folder *
                     </label>
                     <select
@@ -352,7 +360,7 @@ export default function AdminPanel({
                       required
                       value={matSubjectId}
                       onChange={(e) => setMatSubjectId(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
                     >
                       <option value="">-- Choose Subject Folder --</option>
                       {subjects.map((sub) => (
@@ -365,7 +373,7 @@ export default function AdminPanel({
 
                   {/* Semester Selection */}
                   <div>
-                    <label htmlFor="mat-semester-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    <label htmlFor="mat-semester-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                       Target Semester *
                     </label>
                     <select
@@ -373,7 +381,7 @@ export default function AdminPanel({
                       required
                       value={matSemester}
                       onChange={(e) => setMatSemester(parseInt(e.target.value, 10))}
-                      className="w-full bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
                     >
                       {Array.from({ length: 8 }).map((_, i) => (
                         <option key={i + 1} value={i + 1}>
@@ -385,7 +393,7 @@ export default function AdminPanel({
 
                   {/* Category */}
                   <div>
-                    <label htmlFor="mat-category-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    <label htmlFor="mat-category-select" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                       Resource Category *
                     </label>
                     <select
@@ -393,7 +401,7 @@ export default function AdminPanel({
                       required
                       value={matCategory}
                       onChange={(e) => setMatCategory(e.target.value as any)}
-                      className="w-full bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer"
                     >
                       <option value="pyqs">PYQs (Previous Year Papers)</option>
                       <option value="notes">Notes (Lecture Guides)</option>
@@ -403,7 +411,7 @@ export default function AdminPanel({
 
                   {/* Tags */}
                   <div>
-                    <label htmlFor="mat-tags-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                    <label htmlFor="mat-tags-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                       Filter Tags (Comma-separated)
                     </label>
                     <input
@@ -412,18 +420,18 @@ export default function AdminPanel({
                       placeholder="e.g., oop, java, classes, exam"
                       value={matTags}
                       onChange={(e) => setMatTags(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-zinc-400"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
                     />
                   </div>
                 </div>
 
                 {/* Google Drive Link Input */}
                 <div className="col-span-1 md:col-span-2">
-                  <label htmlFor="mat-drive-link-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
+                  <label htmlFor="mat-drive-link-input" className="block text-xs font-bold font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                     Google Drive Link *
                   </label>
-                  <div className="relative rounded-xl bg-zinc-50 border border-zinc-200 focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 transition-all flex items-center">
-                    <div className="pl-3 text-zinc-400">
+                  <div className="relative rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 focus-within:border-indigo-500 focus-within:bg-white dark:focus-within:bg-zinc-900 focus-within:ring-2 focus-within:ring-indigo-100 dark:focus-within:ring-indigo-950 transition-all flex items-center">
+                    <div className="pl-3 text-zinc-400 dark:text-zinc-500">
                       <LinkIcon className="w-4 h-4" />
                     </div>
                     <input
@@ -433,10 +441,10 @@ export default function AdminPanel({
                       placeholder="e.g., https://drive.google.com/file/d/.../view?usp=sharing"
                       value={matDriveLink}
                       onChange={(e) => setMatDriveLink(e.target.value)}
-                      className="w-full bg-transparent px-3 py-2.5 outline-none placeholder:text-zinc-400 text-sm"
+                      className="w-full bg-transparent text-zinc-900 dark:text-zinc-100 px-3 py-2.5 outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-500 text-sm"
                     />
                   </div>
-                  <p className="text-[10px] text-zinc-400 mt-1.5 font-mono">Ensure link sharing on Google Drive is set to "Anyone with the link can view"</p>
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1.5 font-mono">Ensure link sharing on Google Drive is set to "Anyone with the link can view"</p>
                 </div>
 
                 {/* Submit Action */}

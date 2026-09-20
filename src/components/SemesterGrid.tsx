@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
-import { BookOpen, Calendar, Search, Tag, X, FileDown, ChevronRight } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { BookOpen, Calendar, Search, Tag, X, ExternalLink, ChevronRight, Star, Eye } from "lucide-react";
 import { Subject, Material, ViewState } from "../types";
-import { formatBytes, formatDate } from "../utils";
+import { formatDate, parseDriveLink } from "../utils";
 import { motion } from "motion/react";
 import { getSubjectAvatar } from "../lib/subjectAvatars";
 
@@ -10,13 +10,30 @@ interface SemesterGridProps {
   materials: Material[];
   onNavigate: (view: ViewState) => void;
   onDownload: (id: string) => void;
+  bookmarkedIds?: string[];
+  onToggleBookmark?: (id: string) => void;
+  onPreview?: (mat: Material) => void;
 }
 
-export default function SemesterGrid({ subject, materials, onNavigate, onDownload }: SemesterGridProps) {
+export default function SemesterGrid({
+  subject,
+  materials,
+  onNavigate,
+  onDownload,
+  bookmarkedIds = [],
+  onToggleBookmark,
+  onPreview,
+}: SemesterGridProps) {
   const [searchTag, setSearchTag] = useState("");
+
+  // Reset search filter when navigating to a different subject (Filter Consistency)
+  useEffect(() => {
+    setSearchTag("");
+  }, [subject.id]);
 
   const avatar = getSubjectAvatar(subject.icon, subject.id);
   const IconComponent = avatar.Icon;
+
 
   // Get all materials belonging to this subject
   const subjectMaterials = useMemo(() => {
@@ -135,61 +152,88 @@ export default function SemesterGrid({ subject, materials, onNavigate, onDownloa
             </h3>
             <button
               onClick={() => setSearchTag("")}
-              className="text-xs font-mono text-indigo-600 hover:underline cursor-pointer"
+              className="text-xs font-mono text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
             >
               Clear Search
             </button>
           </div>
 
           {filteredMaterials.length === 0 ? (
-            <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-8 text-center text-zinc-500 text-sm">
-              No files matching <span className="font-mono text-indigo-600">"{searchTag}"</span> in this subject.
+            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-8 text-center text-zinc-500 dark:text-zinc-400 text-sm">
+              No files matching <span className="font-mono text-indigo-600 dark:text-indigo-400">"{searchTag}"</span> in this subject.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredMaterials.map((mat) => (
-                <div
-                  key={mat.id}
-                  className="bg-white border border-zinc-150 rounded-xl p-4 flex flex-col justify-between hover:shadow-xs hover:border-indigo-200 transition-all group"
-                >
-                  <div>
-                    <div className="flex justify-between items-start gap-2 mb-2">
-                      <span className="px-2 py-0.5 text-[10px] font-bold font-mono bg-zinc-50 border border-zinc-150 text-zinc-600 uppercase rounded">
-                        Sem {mat.semester} • {mat.category === "pyqs" ? "PYQ" : mat.category === "notes" ? "Notes" : "Short Notes"}
-                      </span>
-                      <span className="text-[10px] font-mono text-zinc-400 shrink-0">
-                        {formatBytes(mat.fileSize)}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-zinc-900 group-hover:text-indigo-900 transition-colors text-sm line-clamp-1">
-                      {mat.title}
-                    </h4>
+              {filteredMaterials.map((mat) => {
+                const isBookmarked = bookmarkedIds.includes(mat.id);
+                const linkInfo = parseDriveLink(mat.driveLink);
 
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {mat.tags.map((tag) => (
-                        <span key={tag} className="text-[10px] font-mono text-zinc-400 bg-zinc-50 border border-zinc-100 px-1.5 py-0.5 rounded">
-                          #{tag}
+                return (
+                  <div
+                    key={mat.id}
+                    className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between hover:shadow-xs hover:border-indigo-300 dark:hover:border-indigo-700 transition-all group"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <span className="px-2 py-0.5 text-[10px] font-bold font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 uppercase rounded">
+                          Sem {mat.semester} • {mat.category === "pyqs" ? "PYQ" : mat.category === "notes" ? "Notes" : "Short Notes"}
                         </span>
-                      ))}
+                        {onToggleBookmark && (
+                          <button
+                            id={`btn-search-star-${mat.id}`}
+                            onClick={() => onToggleBookmark(mat.id)}
+                            title={isBookmarked ? "Starred" : "Star"}
+                            className="text-zinc-400 hover:text-amber-500 transition-colors p-1"
+                          >
+                            <Star className={`w-3.5 h-3.5 ${isBookmarked ? "fill-amber-400 text-amber-500" : ""}`} />
+                          </button>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-sm line-clamp-1">
+                        {mat.title}
+                      </h4>
+
+                      {/* Tags */}
+                      {mat.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {mat.tags.map((tag) => (
+                            <span key={tag} className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
+                      <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+                        {formatDate(mat.uploadDate)}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        {onPreview && (
+                          <button
+                            id={`btn-search-preview-${mat.id}`}
+                            onClick={() => onPreview(mat)}
+                            className="flex items-center space-x-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline font-mono cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </button>
+                        )}
+                        <a
+                          href={linkInfo.viewUrl || mat.driveLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center space-x-1 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-mono"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Drive</span>
+                        </a>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="mt-3 pt-3 border-t border-zinc-50 flex justify-between items-center">
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      {formatDate(mat.uploadDate)}
-                    </span>
-                    <button
-                      id={`btn-search-dl-${mat.id}`}
-                      onClick={() => onDownload(mat.id)}
-                      className="flex items-center space-x-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors font-mono cursor-pointer"
-                    >
-                      <FileDown className="w-3.5 h-3.5" />
-                      <span>Download</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
